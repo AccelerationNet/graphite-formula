@@ -6,7 +6,7 @@
 {%- set host = salt['mine.get']('roles:monitor_master', 'network.interfaces', 'grain').keys()|first() %}
 
 {%- if host is not defined %}
-{%- set host = 'graphite' %}
+{%- set host = salt['grains.get']('fqdn', 'graphite') %}
 {%- endif %}
 
 # make this configurable if needed

@@ -1,8 +1,6 @@
 include:
   - graphite.supervisor
 
-{%- if 'monitor_master' in salt['grains.get']('roles', []) %}
-
 {%- from 'graphite/settings.sls' import graphite with context %}
 
 install-deps:
@@ -12,8 +10,7 @@ install-deps:
       - python-pip
       - nginx
       - gcc
-      - MySQL-python
-{%- if grains['os_family'] == 'Debian' %}
+      - libmysqlclient-dev
       - python-dev
       - sqlite3
       - libcairo2
@@ -21,42 +18,16 @@ install-deps:
       - python-cairo
       - pkg-config
       - gunicorn
-{%- elif grains['os_family'] == 'RedHat' %}
-      - python-devel
-      - sqlite
-      - bitmap
-{%- if grains['os'] != 'Amazon' %}
-      - bitmap-fonts-compat
-{%- endif %}
-      - pycairo-devel
-      - pkgconfig
-      - python-gunicorn
-{%- endif %}
-
-{%- if grains['os'] == 'Amazon' %}
-{%- set pkg_list = ['fixed-fonts', 'console-fonts', 'fangsongti-fonts', 'lucida-typewriter-fonts', 'miscfixed-fonts', 'fonts-compat'] %}
-{%- for fontpkg in pkg_list %}
-install-{{ fontpkg }}-on-amazon:
-  pkg.installed:
-    - sources:
-      - bitmap-{{ fontpkg }}: http://mirror.centos.org/centos/6/os/x86_64/Packages/bitmap-{{ fontpkg }}-0.3-15.el6.noarch.rpm
-{%- endfor %}
-{%- endif %}
-
-/tmp/graphite_reqs.txt:
-  file.managed:
-    - source: salt://graphite/files/graphite_reqs.txt
-    - template: jinja
-    - context:
-      graphite_version: '0.9.12'
-
-install-graphite-apps:
-  cmd.run:
-    - name: pip install -r /tmp/graphite_reqs.txt
-    - unless: test -d /opt/graphite/webapp
-    - require:
-      - file: /tmp/graphite_reqs.txt
-      - pkg: install-deps
+  pip.installed:
+    - names:
+      - MySQL-python
+      - daemonize
+      - django==1.5
+      - django-tagging
+      - python-memcached
+      - whisper
+      - carbon
+      - graphite-web
 
 /opt/graphite/webapp/graphite/app_settings.py:
   file.append:
@@ -66,13 +37,6 @@ graphite:
   user.present:
     - group: graphite
     - shell: /bin/false
-
-/opt/graphite/storage/graphite.db:
-  file.managed:
-    - source: salt://graphite/files/graphite.db
-    - replace: False
-    - user: graphite
-    - group: graphite
 
 /opt/graphite/storage:
   file.directory:
@@ -151,36 +115,39 @@ local-dirs:
       max_updates_per_second: {{ graphite.max_updates_per_second }}
 
 {%- if graphite.dbtype == 'sqlite3' %}
-initialize-graphite-db-sqlite3:
-  cmd.run:
+
+/opt/graphite/storage/graphite.db:
+  file.managed:
+    - source: salt://graphite/files/graphite.db
+    - replace: False
+    - user: graphite
+    - group: graphite
+  cmd.wait:
     - cwd: {{ graphite.prefix }}/webapp/graphite
     - name:  python manage.py syncdb --noinput
+    - watch:
+        - file: /opt/graphite/storage/graphite.db
+
 {%- endif %}
 
 /etc/supervisor/conf.d/graphite.conf:
   file.managed:
     - source: salt://graphite/files/supervisord-graphite.conf
     - mode: 644
-
-# cannot get any watch construct to work
-restart-supervisor-for-graphite:
-  cmd.wait:
-    - name: service {{ graphite.supervisor_init_name }} restart
+  service.running:
+    - name: supervisor
     - watch:
       - file: /etc/supervisor/conf.d/graphite.conf
 
-/etc/nginx/conf.d/graphite.conf:
+/etc/nginx/sites-enabled/graphite.conf:
   file.managed:
     - source: salt://graphite/files/graphite.conf.nginx
     - template: jinja
     - context:
       graphite_host: {{ graphite.host }}
-
-nginx:
   service.running:
+    - name: nginx
     - enable: True
     - reload: True
     - watch:
-      - file: /etc/nginx/conf.d/graphite.conf
-
-{%- endif %}
+      - file: /etc/nginx/sites-enabled/graphite.conf
