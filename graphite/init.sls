@@ -76,18 +76,15 @@ graphite-pip:
           PID_DIR: /var/run/carbon/
           LOG_DIR: /var/log/carbon/
 
-/opt/graphite/conf/storage-schemas.conf?init:
-  file.copy:
-    - name: /opt/graphite/conf/storage-schemas.conf
-    - source: /opt/graphite/conf/storage-schemas.conf.example
-  ini.sections_absent:
-    - sections:
-        - default_1min_for_1day
-
 /opt/graphite/conf/storage-schemas.conf:
+  file.managed: []
   ini.sections_present:
     - sections:
-        # TODO: splice in custom retentions from pillar
+{% for rule, ruledef in graphite.retentions.items() %}
+        {{rule}}:
+          pattern: {{ruledef['pattern']}}
+          retentions: {{ruledef['retentions']}}
+{% endfor %}
         default:
           pattern: .*
           retentions: {{ graphite.default_retention }}
@@ -109,11 +106,12 @@ graphite-pip:
         - file: /opt/graphite/conf/graphite-web.py
 
 graphite.db:
-  cmd.run:
+  cmd.wait:
     - cwd: /opt/graphite/webapp/graphite
     - name:  python manage.py syncdb --noinput
-    - require:
+    - watch:
         - pip: graphite-pip
+    - require:
         - file: /opt/graphite/webapp/graphite/local_settings.py
   file.managed:
     - name: {{graphite.storage_dir}}/graphite.db
