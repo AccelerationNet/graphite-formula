@@ -94,9 +94,9 @@ graphite-pip:
     - source: salt://graphite/files/local_settings.py
     - template: jinja
     - context:
-        STORAGE_DIR: {{graphite.storage_dir}}
+        STORAGE_DIR: {{ graphite.storage_dir }}
         TIME_ZONE: {{ salt['timezone.get_zone']() }}
-        # TODO: allow arbitrary extras from pillar
+        extras: {{ graphite.local_settings | yaml }}
 
 /opt/graphite/webapp/graphite/local_settings.py:
   file.symlink:

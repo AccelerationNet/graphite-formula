@@ -3,3 +3,4 @@ SECRET_KEY = 'NEED TO BE UNIQUE'
 STORAGE_DIR = '{{STORAGE_DIR}}'
 LOG_DIR = '/var/log/carbon'
 TIME_ZONE = '{{TIME_ZONE}}'
+{{extras}}
