@@ -97,6 +97,10 @@ graphite-pip:
         STORAGE_DIR: {{ graphite.storage_dir }}
         TIME_ZONE: {{ salt['timezone.get_zone']() }}
         extras: {{ graphite.local_settings | yaml }}
+        # TODO: use
+        # http://docs.saltstack.com/en/latest/ref/modules/all/salt.modules.grains.html#salt.modules.grains.get_or_set_hash
+        # when it's fixed
+        SECRET_KEY: {{ salt['key.finger']() }}
 
 /opt/graphite/webapp/graphite/local_settings.py:
   file.symlink:
