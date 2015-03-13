@@ -1,37 +1,12 @@
-========
-graphite
-========
+graphite-formula
+================
 
-Formula to set up and configure graphite servers on Debian and RedHat systems
+Formula to set up and configure graphite servers on Debian systems
 
 .. note::
 
     See the full `Salt Formulas installation and usage instructions
     <http://docs.saltstack.com/en/latest/topics/development/conventions/formulas.html>`_.
-
-Starting Service
-================
-
-Setup database if not already done ::
-
-    python /opt/graphite/webapp/graphite/manage.py syncdb
-
-Start graphite ::
-
-    /opt/graphite/bin/run-graphite-devel-server.py /opt/graphite &
-
-Generating a new password
-==========================
-
-Uses the `Passlib library <http://pythonhosted.org/passlib/>`_ ::
-
-    pip install passlib
-    
-Then make::
-
-    python -c "from passlib.hash import pbkdf2_sha256; import getpass, pwd; print pbkdf2_sha256.encrypt(getpass.getpass())"
-    Password: [ENTER YOUR PASSWORD HERE]
-
 
 Available states
 ================
@@ -42,19 +17,11 @@ Available states
 ``graphite``
 ------------
 
-Installs all dependencies and the graphite packages themselves, sets up a minimal system including 
-supervisor to run carbon and django and nginx as the proxy.
+Installs all dependencies and the graphite packages themselves, sets
+up a minimal system using supervisord_ to run carbon-cache,
+carbon-aggregator, and graphite-web as individual python processes.
+graphite-web is run using gunicorn_ on ``http://localhost:8080``.
+Nginx is proxying ``http://$host`` to ``http://localhost:8080``.
 
-``graphite.supervisor``
------------------------
-
-Adds a basic supervisor configuration for the graphite daemons to work on top of.
-The graphite state already depends on this one internally - eventually there should be a supervisor-formula.
-
-``graphite.mysqldb``
---------------------
-
-Depends on the mysql-formula's mysql.client and mysql.server, makes the graphite server use mysql
-for the admin login.
-
-Please note that this is a very basic (and monolithic) formula, not necessarily intended for production use.
+.. _supervisord: http://supervisord.org/
+.. _gunicorn: http://gunicorn.org/
