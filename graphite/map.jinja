@@ -1,0 +1,9 @@
+{% set graphite = salt['grains.filter_by']({
+  'default' : {
+    'server_name': salt['grains.get']('fqdn', '_'),
+    'max_updates_per_second': 500,
+    'max_creates_per_minute': 50,
+    'storage_dir': '/var/data/carbon',
+    'default_retention': '1m:7d,5m:14d,15m:60d,1h:5y'
+  }
+}, merge=salt['pillar.get']('graphite:lookup'), default='default') %}

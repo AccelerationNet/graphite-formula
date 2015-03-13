@@ -17,11 +17,29 @@ Available states
 ``graphite``
 ------------
 
-Installs all dependencies and the graphite packages themselves, sets
-up a minimal system using supervisord_ to run carbon-cache,
-carbon-aggregator, and graphite-web as individual python processes.
-graphite-web is run using gunicorn_ on ``http://localhost:8080``.
-Nginx is proxying ``http://$host`` to ``http://localhost:8080``.
+Installs all dependencies and the graphite packages themselves, and
+configured daemons and servers.
+
+* supervisord_ to run carbon-cache, carbon-aggregator, and
+  graphite-web
+* gunicorn_ running graphite-web on ``http://localhost:8080``
+* nginx as a proxy on ``http://$host``
+* memcached with appropriate carbon/graphite-web configuration
+* carbon-cache listening on standard ports
+* carbon-aggregator listening on standard ports
+* configured for FHS_ conventions (mostly)
+
+Further customization is available via pillars.
 
 .. _supervisord: http://supervisord.org/
 .. _gunicorn: http://gunicorn.org/
+.. _FHS: http://www.pathname.com/fhs/
+
+
+Known Issues
+============
+
+* only graphite-web logs are written properly to ``/var/log/carbon``,
+  using ``--nodaemon`` for carbon-cache turns off file logging but is
+  needed for supervisord_ (or many other process managers). Logs are
+  still accessible via ``/var/log/supervisor``

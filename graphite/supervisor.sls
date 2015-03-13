@@ -1,5 +1,3 @@
-{%- from 'graphite/settings.sls' import graphite with context %}
-
 supervisor:
   pkg.installed:
     - name: supervisor
@@ -13,7 +11,4 @@ supervisor:
     - makedirs: True
   service.running:
     - name: supervisor
-    - reload: True
     - enable: True
-    - watch:
-      - pkg: supervisor

@@ -1,7 +1,24 @@
 include:
   - graphite.supervisor
 
-{%- from 'graphite/settings.sls' import graphite with context %}
+{% from "graphite/map.jinja" import graphite with context %}
+
+graphite:
+  user.present:
+    - group: graphite
+    - shell: /bin/false
+
+local-dirs:
+  file.directory:
+    - user: graphite
+    - group: graphite
+    - makedirs: True
+    - names:
+      - /var/run/gunicorn-graphite
+      - /var/log/gunicorn-graphite
+      - /var/run/carbon
+      - /var/log/carbon
+      - {{graphite.storage_dir}}
 
 install-deps:
   pkg.installed:
@@ -26,109 +43,84 @@ install-deps:
       - django-tagging
       - python-memcached
       - whisper
-      - carbon
-      - graphite-web
 
-/opt/graphite/webapp/graphite/app_settings.py:
-  file.append:
-    - text: SECRET_KEY = '34960c411f3c13b362d33f8157f90d958f4ff1494d7568e58e0279df7450445ec496d8aaa098271e'
+# these install in non-standard locations, so needs additional
+# config
+graphite-pip:
+  # tell pip to look in non-standard install locations
+  environ.setenv: # `pip.install env_vars` doesn't seem to be working
+    - name: PYTHONPATH
+    - value: /opt/graphite/lib:/opt/graphite/webapp
+  pip.installed:
+    - names: [carbon, graphite-web]
 
-graphite:
-  user.present:
-    - group: graphite
-    - shell: /bin/false
+# /opt/graphite/conf/storage-aggregation.conf:
+#   file.managed:
+#     - source: salt://graphite/files/storage-aggregation.conf
 
-/opt/graphite/storage:
-  file.directory:
-    - user: graphite
-    - group: graphite
-    - recurse:
-      - user
-      - group
+/opt/graphite/conf/carbon.conf:
+  file.copy:
+    - name: /opt/graphite/conf/carbon.conf
+    - source: /opt/graphite/conf/carbon.conf.example
+  ini.options_present:
+    - sections:
+        cache:
+          STORAGE_DIR: {{graphite.storage_dir}}
+          LOCAL_DATA_DIR: {{graphite.storage_dir}}/whisper
+          PID_DIR: /var/run/carbon/
+          LOG_DIR: /var/log/carbon/
+          MAX_UPDATES_PER_SECOND: {{ graphite.max_updates_per_second }}
+          MAX_CREATES_PER_MINUTE: {{ graphite.max_creates_per_minute }}
+        aggregator:
+          STORAGE_DIR: {{graphite.storage_dir}}
+          PID_DIR: /var/run/carbon/
+          LOG_DIR: /var/log/carbon/
 
-{{ graphite.whisper_dir }}:
-  file.directory:
-    - user: graphite
-    - group: graphite
-    - makedirs: True
-    - recurse:
-      - user
-      - group
+/opt/graphite/conf/storage-schemas.conf?init:
+  file.copy:
+    - name: /opt/graphite/conf/storage-schemas.conf
+    - source: /opt/graphite/conf/storage-schemas.conf.example
+  ini.sections_absent:
+    - sections:
+        - default_1min_for_1day
 
-{%- if graphite.whisper_dir != graphite.prefix + '/storage/whisper' %}
+/opt/graphite/conf/storage-schemas.conf:
+  ini.sections_present:
+    - sections:
+        # TODO: splice in custom retentions from pillar
+        default:
+          pattern: .*
+          retentions: {{ graphite.default_retention }}
 
-{{ graphite.prefix + '/storage/whisper' }}:
-  file.symlink:
-    - target: {{ graphite.whisper_dir }}
-    - force: True
-
-{%- endif %}
-
-local-dirs:
-  file.directory:
-    - user: graphite
-    - group: graphite
-    - names:
-      - /var/run/gunicorn-graphite
-      - /var/log/gunicorn-graphite
-      - /var/run/carbon
-      - /var/log/carbon
-
-/opt/graphite/webapp/graphite/local_settings.py:
+/opt/graphite/conf/graphite-web.py:
   file.managed:
     - source: salt://graphite/files/local_settings.py
     - template: jinja
     - context:
-      dbtype: {{ graphite.dbtype }}
-      dbname: {{ graphite.dbname }}
-      dbuser: {{ graphite.dbuser }}
-      dbpassword: {{ graphite.dbpassword }}
-      dbhost: {{ graphite.dbhost }}
-      dbport: {{ graphite.dbport }}
+        STORAGE_DIR: {{graphite.storage_dir}}
+        TIME_ZONE: {{ salt['timezone.get_zone']() }}
+        # TODO: allow arbitrary extras from pillar
 
-# django database fixtures
-{{ graphite.prefix }}/webapp/graphite/initial_data.yaml:
+/opt/graphite/webapp/graphite/local_settings.py:
+  file.symlink:
+    - target: /opt/graphite/conf/graphite-web.py
+    - force: True
+    - require:
+        - file: /opt/graphite/conf/graphite-web.py
+
+graphite.db:
+  cmd.run:
+    - cwd: /opt/graphite/webapp/graphite
+    - name:  python manage.py syncdb --noinput
+    - require:
+        - pip: graphite-pip
+        - file: /opt/graphite/webapp/graphite/local_settings.py
   file.managed:
-    - source: salt://graphite/files/initial_data.yaml
-    - template: jinja
-    - context:
-      admin_email: {{ graphite.admin_email }}
-      admin_user: {{ graphite.admin_user }}
-      admin_password: {{ graphite.admin_password }}
-
-/opt/graphite/conf/storage-schemas.conf:
-  file.managed:
-    - source: salt://graphite/files/storage-schemas.conf
-
-/opt/graphite/conf/storage-aggregation.conf:
-  file.managed:
-    - source: salt://graphite/files/storage-aggregation.conf
-
-/opt/graphite/conf/carbon.conf:
-  file.managed:
-    - source: salt://graphite/files/carbon.conf
-    - template: jinja
-    - context:
-      graphite_port: {{ graphite.port }}
-      graphite_pickle_port: {{ graphite.pickle_port }}
-      max_creates_per_minute: {{ graphite.max_creates_per_minute }}
-      max_updates_per_second: {{ graphite.max_updates_per_second }}
-
-{%- if graphite.dbtype == 'sqlite3' %}
-
-/opt/graphite/storage/graphite.db:
-  file.managed:
-    - source: salt://graphite/files/graphite.db
-    - replace: False
+    - name: {{graphite.storage_dir}}/graphite.db
     - user: graphite
     - group: graphite
-  cmd.wait:
-    - cwd: {{ graphite.prefix }}/webapp/graphite
-    - name:  python manage.py syncdb --noinput
     - watch:
-        - file: /opt/graphite/storage/graphite.db
-
-{%- endif %}
+        - cmd: graphite.db
 
 /etc/supervisor/conf.d/graphite.conf:
   file.managed:
@@ -136,15 +128,18 @@ local-dirs:
     - mode: 644
   service.running:
     - name: supervisor
+    - resart: True
     - watch:
       - file: /etc/supervisor/conf.d/graphite.conf
+      - file: /opt/graphite/conf/*
+      - ini: /opt/graphite/conf/*
 
 /etc/nginx/sites-enabled/graphite.conf:
   file.managed:
     - source: salt://graphite/files/graphite.conf.nginx
     - template: jinja
     - context:
-      graphite_host: {{ graphite.host }}
+        server_name: {{ graphite.server_name }}
   service.running:
     - name: nginx
     - enable: True
