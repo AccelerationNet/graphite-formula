@@ -43,6 +43,7 @@ install-deps:
       - django-tagging
       - python-memcached
       - whisper
+      - pytz
 
 # these install in non-standard locations, so needs additional
 # config
