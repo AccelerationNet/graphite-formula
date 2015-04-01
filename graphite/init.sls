@@ -1,7 +1,7 @@
+{% from "graphite/map.jinja" import graphite with context %}
+
 include:
   - graphite.supervisor
-
-{% from "graphite/map.jinja" import graphite with context %}
 
 graphite:
   user.present:
@@ -25,7 +25,6 @@ install-deps:
     - names:
       - memcached
       - python-pip
-      - nginx
       - gcc
       - libmysqlclient-dev
       - python-dev
@@ -55,10 +54,6 @@ graphite-pip:
   pip.installed:
     - names: [carbon, graphite-web]
 
-# /opt/graphite/conf/storage-aggregation.conf:
-#   file.managed:
-#     - source: salt://graphite/files/storage-aggregation.conf
-
 /opt/graphite/conf/carbon.conf:
   file.copy:
     - name: /opt/graphite/conf/carbon.conf
@@ -78,7 +73,6 @@ graphite-pip:
           LOG_DIR: /var/log/carbon/
 
 /opt/graphite/conf/storage-schemas.conf:
-  file.managed: []
   ini.sections_present:
     - sections:
 {% for rule, ruledef in graphite.retentions.items() %}
@@ -90,25 +84,38 @@ graphite-pip:
           pattern: .*
           retentions: {{ graphite.default_retention }}
 
-/opt/graphite/conf/graphite-web.py:
+/opt/graphite/storage:
+  file.directory:
+    - user: graphite
+    - require:
+        - pip: graphite-pip
+        - user: graphite
+
+
+/opt/graphite/webapp/graphite/local_settings.py:
   file.managed:
     - source: salt://graphite/files/local_settings.py
     - template: jinja
-    - context:
-        STORAGE_DIR: {{ graphite.storage_dir }}
-        TIME_ZONE: {{ salt['timezone.get_zone']() }}
-        extras: {{ graphite.local_settings | yaml }}
+    - defaults:
+        time_zone: {{ salt['timezone.get_zone']() }}
         # TODO: use
         # http://docs.saltstack.com/en/latest/ref/modules/all/salt.modules.grains.html#salt.modules.grains.get_or_set_hash
         # when it's fixed
-        SECRET_KEY: {{ salt['key.finger']() }}
+        secret_key: {{ salt['key.finger']() }}
+        use_nginx_auth: False
+        local_settings: ''
+    - context: {{ graphite | yaml}}
 
-/opt/graphite/webapp/graphite/local_settings.py:
-  file.symlink:
-    - target: /opt/graphite/conf/graphite-web.py
-    - force: True
-    - require:
-        - file: /opt/graphite/conf/graphite-web.py
+{% if graphite.get('use_nginx_auth') %}
+/opt/graphite/webapp/graphite/salt_custom.py:
+  file.managed:
+    - contents: |
+        from django.contrib.auth.middleware import RemoteUserMiddleware
+
+        class CustomHeaderMiddleware(RemoteUserMiddleware):
+            header = 'HTTP_REMOTE_USER'
+
+{% endif %}
 
 graphite.db:
   cmd.wait:
@@ -134,18 +141,12 @@ graphite.db:
     - resart: True
     - watch:
       - file: /etc/supervisor/conf.d/graphite.conf
+      - file: /opt/graphite/webapp/*
       - file: /opt/graphite/conf/*
       - ini: /opt/graphite/conf/*
 
-/etc/nginx/sites-enabled/graphite.conf:
+/etc/nginx/graphite-web.conf:
   file.managed:
-    - source: salt://graphite/files/graphite.conf.nginx
-    - template: jinja
-    - context:
-        server_name: {{ graphite.server_name }}
-  service.running:
-    - name: nginx
-    - enable: True
-    - reload: True
-    - watch:
-      - file: /etc/nginx/sites-enabled/graphite.conf
+    - source: salt://graphite/files/etc/nginx/graphite-web.conf
+    - mode: 444
+    - make_dirs: True
