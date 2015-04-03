@@ -17,29 +17,52 @@ Available states
 ``graphite``
 ------------
 
-Installs all dependencies and the graphite packages themselves, and
-configured daemons and servers.
+Installs the carbon-cache_ and carbon-aggregator_ daemons, with all dependencies.
 
-* supervisord_ to run carbon-cache, carbon-aggregator, and
-  graphite-web
-* gunicorn_ running graphite-web on ``http://localhost:8080``
-* nginx as a proxy on ``http://$host``
-* memcached with appropriate carbon/graphite-web configuration
-* carbon-cache listening on standard ports
-* carbon-aggregator listening on standard ports
+* started via upstart_
+* memcached listening on standard local ports
+* carbon-cache_ listening on standard ports
+* carbon-aggregator_ listening on standard ports
 * configured for FHS_ conventions (mostly)
 
 Further customization is available via pillars.
 
-.. _supervisord: http://supervisord.org/
-.. _gunicorn: http://gunicorn.org/
 .. _FHS: http://www.pathname.com/fhs/
+.. _upstart: http://upstart.ubuntu.com
+.. _carbon-cache: http://graphite.readthedocs.org/en/latest/carbon-daemons.html#carbon-cache-py
+.. _carbon-aggregator: http://graphite.readthedocs.org/en/latest/carbon-daemons.html#carbon-aggregator-py
 
+``graphite.uwsgi``
+------------------
+
+Installs the graphite_ web application.
+
+* started via upstart_
+* uwsgi_ running the django application listening on ``/var/run/graphite/socket``
+* nginx config files ready for inclusion
+* logs to ``/var/log/graphite``
+* uses memcached
+
+Further customization is available via pillars.
+
+.. _uwsgi: http://uwsgi-docs.readthedocs.org
+.. _graphite: http://graphite.readthedocs.org
+
+``graphite.nginx``
+------------------
+
+Installs nginx_ server to serve the graphite_ website. Very minimal
+configuration mostly indented of testing. I recommend managing NOT
+using this state and including the nginx_ config files created by
+``graphite.uwsgi``
+
+.. _nginx: http://nginx.org/
 
 Known Issues
 ============
 
-* only graphite-web logs are written properly to ``/var/log/carbon``,
-  using ``--nodaemon`` for carbon-cache turns off file logging but is
-  needed for supervisord_ (or many other process managers). Logs are
-  still accessible via ``/var/log/supervisor``
+* the upstart scripts for the ``carbon-*`` daemons is a bad hack. The
+  carbon daemons perform their own daemonization, and this does not
+  play nicely with upstart. To work around this, all operations on
+  carbon daemons are accomplished via ``pre-start`` and ``pre-stop``
+  config

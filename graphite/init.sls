@@ -1,8 +1,5 @@
 {% from "graphite/map.jinja" import graphite with context %}
 
-include:
-  - graphite.supervisor
-
 graphite:
   user.present:
     - group: graphite
@@ -10,14 +7,12 @@ graphite:
 
 local-dirs:
   file.directory:
-    - user: graphite
     - group: graphite
+    - mode: 775
     - makedirs: True
     - names:
-      - /var/run/gunicorn-graphite
-      - /var/log/gunicorn-graphite
-      - /var/run/carbon
       - /var/log/carbon
+      - /opt/graphite/storage
       - {{graphite.storage_dir}}
 
 install-deps:
@@ -33,7 +28,6 @@ install-deps:
       - libcairo2-dev
       - python-cairo
       - pkg-config
-      - gunicorn
   pip.installed:
     - names:
       - MySQL-python
@@ -50,9 +44,9 @@ graphite-pip:
   # tell pip to look in non-standard install locations
   environ.setenv: # `pip.install env_vars` doesn't seem to be working
     - name: PYTHONPATH
-    - value: /opt/graphite/lib:/opt/graphite/webapp
+    - value: /opt/graphite/lib
   pip.installed:
-    - names: [carbon, graphite-web]
+    - name: carbon
 
 /opt/graphite/conf/carbon.conf:
   file.copy:
@@ -67,10 +61,12 @@ graphite-pip:
           LOG_DIR: /var/log/carbon/
           MAX_UPDATES_PER_SECOND: {{ graphite.max_updates_per_second }}
           MAX_CREATES_PER_MINUTE: {{ graphite.max_creates_per_minute }}
+          USER: graphite
         aggregator:
           STORAGE_DIR: {{graphite.storage_dir}}
           PID_DIR: /var/run/carbon/
           LOG_DIR: /var/log/carbon/
+          USER: graphite
 
 /opt/graphite/conf/storage-schemas.conf:
   ini.sections_present:
@@ -84,69 +80,34 @@ graphite-pip:
           pattern: .*
           retentions: {{ graphite.default_retention }}
 
-/opt/graphite/storage:
-  file.directory:
-    - user: graphite
-    - require:
-        - pip: graphite-pip
-        - user: graphite
 
 
-/opt/graphite/webapp/graphite/local_settings.py:
+carbon-cache:
   file.managed:
-    - source: salt://graphite/files/local_settings.py
+    - name: /etc/init/carbon-cache.conf
+    - source: salt://graphite/files/etc/init/carbon-daemon.jinja.conf
     - template: jinja
-    - defaults:
-        time_zone: {{ salt['timezone.get_zone']() }}
-        # TODO: use
-        # http://docs.saltstack.com/en/latest/ref/modules/all/salt.modules.grains.html#salt.modules.grains.get_or_set_hash
-        # when it's fixed
-        secret_key: {{ salt['key.finger']() }}
-        use_nginx_auth: False
-        local_settings: ''
-    - context: {{ graphite | yaml}}
-
-{% if graphite.get('use_nginx_auth') %}
-/opt/graphite/webapp/graphite/salt_custom.py:
-  file.managed:
-    - contents: |
-        from django.contrib.auth.middleware import RemoteUserMiddleware
-
-        class CustomHeaderMiddleware(RemoteUserMiddleware):
-            header = 'HTTP_REMOTE_USER'
-
-{% endif %}
-
-graphite.db:
-  cmd.wait:
-    - cwd: /opt/graphite/webapp/graphite
-    - name:  python manage.py syncdb --noinput
-    - watch:
-        - pip: graphite-pip
-    - require:
-        - file: /opt/graphite/webapp/graphite/local_settings.py
-  file.managed:
-    - name: {{graphite.storage_dir}}/graphite.db
-    - user: graphite
-    - group: graphite
-    - watch:
-        - cmd: graphite.db
-
-/etc/supervisor/conf.d/graphite.conf:
-  file.managed:
-    - source: salt://graphite/files/supervisord-graphite.conf
-    - mode: 644
-  service.running:
-    - name: supervisor
-    - resart: True
-    - watch:
-      - file: /etc/supervisor/conf.d/graphite.conf
-      - file: /opt/graphite/webapp/*
-      - file: /opt/graphite/conf/*
-      - ini: /opt/graphite/conf/*
-
-/etc/nginx/graphite-web.conf:
-  file.managed:
-    - source: salt://graphite/files/etc/nginx/graphite-web.conf
     - mode: 444
-    - make_dirs: True
+    - defaults:
+        name: carbon-cache
+  service.running:
+    - require:
+        - file: carbon-cache
+        - pip: graphite-pip
+    - watch:
+        - file: /opt/graphite/conf/*
+
+carbon-aggregator:
+  file.managed:
+    - name: /etc/init/carbon-aggregator.conf
+    - source: salt://graphite/files/etc/init/carbon-daemon.jinja.conf
+    - template: jinja
+    - mode: 444
+    - defaults:
+        name: carbon-aggregator
+  service.running:
+    - require:
+        - file: carbon-aggregator
+        - pip: graphite-pip
+    - watch:
+        - file: /opt/graphite/conf/*
