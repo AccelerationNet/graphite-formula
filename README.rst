@@ -61,8 +61,9 @@ using this state and including the nginx_ config files created by
 Known Issues
 ============
 
-* the upstart scripts for the ``carbon-*`` daemons is a bad hack. The
+* the upstart scripts for the ``carbon-*`` daemons are a bad hack. The
   carbon daemons perform their own daemonization, and this does not
-  play nicely with upstart. To work around this, all operations on
-  carbon daemons are accomplished via ``pre-start`` and ``pre-stop``
-  config
+  play nicely with upstart. You can set some unrelated flags to get
+  carbon daemons to NOT daemonize, but then they don't log. To get
+  proper logging, we let the carbon daemons daemonize themselves, and
+  manage them in upstart via ``pre-start`` and ``pre-stop`` hooks

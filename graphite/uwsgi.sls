@@ -53,7 +53,7 @@ uwsgi:
   file.copy:
     - source: /opt/graphite/conf/graphite.wsgi.example
     - require:
-        - pip: graphite-pip
+        - pip: uwsgi
 
 # uwsgi ini file
 /opt/graphite/conf/graphite.ini:
@@ -75,7 +75,7 @@ graphite-service:
         - file: graphite-service
         - file: /opt/graphite/conf/graphite.ini
     - watch:
-        - file: /opt/graphite/conf/*
+        - file: /opt/graphite/*
 
 # nginx includes
 /etc/nginx/graphite-uwsgi.conf:
